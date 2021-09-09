@@ -16,7 +16,8 @@ FROM alpine:3.13
 
 ENV LC_ALL=C.UTF-8
 ENV LANG=C.UTF-8
-
+RUN echo httpbin
+RUN echo httpbin test
 RUN apk update \
   && apk add --no-cache \
     python3 python3-dev \
