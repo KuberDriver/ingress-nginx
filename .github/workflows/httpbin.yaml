@@ -33,18 +33,41 @@ jobs:
       - name: Available platforms
         run: echo ${{ steps.buildx.outputs.platforms }}
 
-      - name: Prepare Host
-        run: |
-          sudo apt-get -qq update || true
-          sudo apt-get install -y pigz
-          curl -LO https://storage.googleapis.com/kubernetes-release/release/v1.17.0/bin/linux/amd64/kubectl
-          chmod +x ./kubectl
-          sudo mv ./kubectl /usr/local/bin/kubectl
+      - uses: dorny/paths-filter@v2
+        id: filter
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          filters: |
+            httpbin:
+              - 'images/httpbin/**'
+            cfssl:
+              - 'images/cfssl/**'            
+            echo:
+              - 'images/echo/**'            
 
-      - name: Build images
+      - name: Build image for httpbin
+        if: steps.filter.outputs.httpbin == 'true'
         env:
           ARCH: amd64
         run: |
           echo "building images..."
           cd images/httpbin; pwd; ls
           PLATFORMS=linux/amd64 make build
+
+      - name: Build image for cfssl
+        if: steps.filter.outputs.cfssl == 'true'
+        env:
+          ARCH: amd64
+        run: |
+          echo "building images..."
+          cd images/cfssl; pwd; ls
+          PLATFORMS=linux/amd64 make build          
+
+      - name: Build image for echo
+        if: steps.filter.outputs.echo == 'true'
+        env:
+          ARCH: amd64
+        run: |
+          echo "building images..."
+          cd images/echo; pwd; ls
+          PLATFORMS=linux/amd64 make build          
