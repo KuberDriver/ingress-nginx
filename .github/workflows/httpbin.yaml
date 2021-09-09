@@ -46,6 +46,5 @@ jobs:
           ARCH: amd64
         run: |
           echo "building images..."
-          make clean-image build image
-          cd images/httpbin
+          cd images/httpbin; pwd; ls
           PLATFORMS=linux/amd64 make build
