@@ -63,11 +63,12 @@ FIELDS:
 
 There are 2 reasons primarily.
 
-(Reason #1) Until K8s version 1.21, it was was possible to create a ingress resource, with the "apiVersion:" field set to a value like ;
+(Reason #1) Until K8s version 1.21, it was possible to create a ingress resource, with the "apiVersion:" field set to a value like:
+
   - extensions/v1beta1
   - networking.k8s.io/v1beta1
 
-    (You would get a message about deprecation but the ingress resource would get created.)
+You would get a message about deprecation but the ingress resource would get created.
 
 From K8s version 1.22 onwards, you can ONLY set the "apiVersion:" field of a ingress resource, to the value "networking.k8s.io/v1". The reason is [official blog on deprecated ingress api versions](https://kubernetes.io/blog/2021/07/26/update-with-ingress-nginx/).
 
@@ -171,7 +172,7 @@ Bear in mind that, if your `Ingress-Nginx-Controller-nginx2` is started with the
 ## How to easily install multiple instances of the ingress-NGINX controller in the same cluster ?
 - Create a new namespace
   ```
-  kubectl create namespace ingress-controller-2
+  kubectl create namespace ingress-nginx-2
   ```
 - Use helm to install the additional instance of the ingress controller
 - Ensure you have helm working (refer to helm documentation)
@@ -185,9 +186,11 @@ Bear in mind that, if your `Ingress-Nginx-Controller-nginx2` is started with the
   ```
 - Now you install the additional instance of the ingress-NGINX controller like this ;
   ```
-  helm --namespace ingress-controller-2 install ingcontroller-2 ingress-nginx/ingress-nginx  \
-  --set controller.ingressClass=ingress-class-2 \
-  --set controller.ingressClassResource.name=ingress-class-2 \
-  --set controller.ingressClassResource.controllerValue= "k8s.io/ingress-controller-2" 
+  helm install ingress-nginx-2 ingress-nginx/ingress-nginx  \
+  --namespace ingress-nginx-2 \
+  --set controller.ingressClassResource.name=nginx-2 \
+  --set controller.ingressClassResource.controllerValue= "k8s.io/ingress-nginx-2" \
+  --set controller.ingressClassResource.enabled=true \
+  --set controller.IngressClassByName=true
   ```
 - If you need to install yet another instance, then repeat the procedure to create a new namespace, change the values like names & namespaces (for example from "-2" to "-3"), or anything else that meets your needs.

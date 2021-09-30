@@ -5,7 +5,7 @@ go 1.17
 require (
 	github.com/armon/go-proxyproto v0.0.0-20210323213023-7e956b284f0a
 	github.com/eapache/channels v1.1.0
-	github.com/fsnotify/fsnotify v1.4.9
+	github.com/fsnotify/fsnotify v1.5.1
 	github.com/gavv/httpexpect/v2 v2.3.1
 	github.com/imdario/mergo v0.3.12
 	github.com/json-iterator/go v1.1.11
@@ -17,7 +17,7 @@ require (
 	github.com/moul/pb v0.0.0-20180404114147-54bdd96e6a52
 	github.com/ncabatoff/process-exporter v0.7.5
 	github.com/onsi/ginkgo v1.16.4
-	github.com/opencontainers/runc v1.0.1
+	github.com/opencontainers/runc v1.0.2
 	github.com/pkg/errors v0.9.1
 	github.com/pmezard/go-difflib v1.0.0
 	github.com/prometheus/client_golang v1.11.0
