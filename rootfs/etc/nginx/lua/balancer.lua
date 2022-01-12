@@ -23,7 +23,6 @@ local ngx = ngx
 -- it will take <the delay until controller POSTed the backend object to the
 -- Nginx endpoint> + BACKENDS_SYNC_INTERVAL
 local BACKENDS_SYNC_INTERVAL = 1
-local BACKENDS_FORCE_SYNC_INTERVAL = 30
 
 local DEFAULT_LB_ALG = "round_robin"
 local IMPLEMENTATIONS = {
@@ -146,10 +145,7 @@ end
 
 local function sync_backends()
   local raw_backends_last_synced_at = configuration.get_raw_backends_last_synced_at()
-  ngx.update_time()
-  local current_timestamp = ngx.time()
-  if current_timestamp - backends_last_synced_at < BACKENDS_FORCE_SYNC_INTERVAL
-      and raw_backends_last_synced_at <= backends_last_synced_at then
+  if raw_backends_last_synced_at <= backends_last_synced_at then
     return
   end
 
@@ -259,7 +255,11 @@ local function route_to_alternative_balancer(balancer)
     end
   end
 
-  if math.random(100) <= traffic_shaping_policy.weight then
+  local weightTotal = 100
+  if traffic_shaping_policy.weightTotal ~= nil and traffic_shaping_policy.weightTotal > 100 then
+    weightTotal = traffic_shaping_policy.weightTotal
+  end
+  if math.random(weightTotal) <= traffic_shaping_policy.weight then
     return true
   end
 

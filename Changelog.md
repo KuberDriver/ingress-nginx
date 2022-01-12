@@ -1,5 +1,123 @@
 # Changelog
 
+### 1.1.1
+
+**Image:** 
+- k8s.gcr.io/ingress-nginx/controller:v1.1.1@sha256:0bc88eb15f9e7f84e8e56c14fa5735aaa488b840983f87bd79b1054190e660de
+
+This release contains several fixes and improvements. This image is now built using Go v1.17.6 and gRPC v1.43.0. See detailed list below.
+
+_Changes:_
+
+- [8120](https://github.com/kubernetes/ingress-nginx/pull/8120)    Update go in runner and release v1.1.1
+- [8119](https://github.com/kubernetes/ingress-nginx/pull/8119)    Update to go v1.17.6
+- [8118](https://github.com/kubernetes/ingress-nginx/pull/8118)    Remove deprecated libraries, update other libs
+- [8117](https://github.com/kubernetes/ingress-nginx/pull/8117)    Fix codegen errors
+- [8115](https://github.com/kubernetes/ingress-nginx/pull/8115)    chart/ghaction: set the correct permission to have access to push a release
+- [8098](https://github.com/kubernetes/ingress-nginx/pull/8098)    generating SHA for CA only certs in backend_ssl.go + comparision of P…
+- [8088](https://github.com/kubernetes/ingress-nginx/pull/8088)    Fix Edit this page link to use main branch
+- [8072](https://github.com/kubernetes/ingress-nginx/pull/8072)    Expose GeoIP2 Continent code as variable
+- [8061](https://github.com/kubernetes/ingress-nginx/pull/8061)    docs(charts): using helm-docs for chart
+- [8058](https://github.com/kubernetes/ingress-nginx/pull/8058)    Bump github.com/spf13/cobra from 1.2.1 to 1.3.0
+- [8054](https://github.com/kubernetes/ingress-nginx/pull/8054)    Bump google.golang.org/grpc from 1.41.0 to 1.43.0
+- [8051](https://github.com/kubernetes/ingress-nginx/pull/8051)    align bug report with feature request regarding kind documentation
+- [8046](https://github.com/kubernetes/ingress-nginx/pull/8046)    Report expired certificates (#8045)
+- [8044](https://github.com/kubernetes/ingress-nginx/pull/8044)    remove G109 check till gosec resolves issues
+- [8042](https://github.com/kubernetes/ingress-nginx/pull/8042)    docs_multiple_instances_one_cluster_ticket_7543
+- [8041](https://github.com/kubernetes/ingress-nginx/pull/8041)    docs: fix typo'd executible name
+- [8035](https://github.com/kubernetes/ingress-nginx/pull/8035)    Comment busy owners
+- [8029](https://github.com/kubernetes/ingress-nginx/pull/8029)    Add stream-snippet as a ConfigMap and Annotation option
+- [8023](https://github.com/kubernetes/ingress-nginx/pull/8023)    fix nginx compilation flags
+- [8021](https://github.com/kubernetes/ingress-nginx/pull/8021)    Disable default modsecurity_rules_file if modsecurity-snippet is specified
+- [8019](https://github.com/kubernetes/ingress-nginx/pull/8019)    Revise main documentation page
+- [8018](https://github.com/kubernetes/ingress-nginx/pull/8018)    Preserve order of plugin invocation
+- [8015](https://github.com/kubernetes/ingress-nginx/pull/8015)    Add newline indenting to admission webhook annotations
+- [8014](https://github.com/kubernetes/ingress-nginx/pull/8014)    Add link to example error page manifest in docs
+- [8009](https://github.com/kubernetes/ingress-nginx/pull/8009)    Fix spelling in documentation and top-level files
+- [8008](https://github.com/kubernetes/ingress-nginx/pull/8008)    Add relabelings in controller-servicemonitor.yaml
+- [8003](https://github.com/kubernetes/ingress-nginx/pull/8003)    Minor improvements (formatting, consistency) in install guide
+- [8001](https://github.com/kubernetes/ingress-nginx/pull/8001)    fix: go-grpc Dockerfile
+- [7999](https://github.com/kubernetes/ingress-nginx/pull/7999)    images: use k8s-staging-test-infra/gcb-docker-gcloud
+- [7996](https://github.com/kubernetes/ingress-nginx/pull/7996)    doc: improvement
+- [7983](https://github.com/kubernetes/ingress-nginx/pull/7983)    Fix a couple of misspellings in the annotations documentation.
+- [7979](https://github.com/kubernetes/ingress-nginx/pull/7979)    allow set annotations for admission Jobs
+- [7977](https://github.com/kubernetes/ingress-nginx/pull/7977)    Add ssl_reject_handshake to defaul server
+- [7975](https://github.com/kubernetes/ingress-nginx/pull/7975)    add legacy version update v0.50.0 to main changelog
+- [7972](https://github.com/kubernetes/ingress-nginx/pull/7972)    updated service upstream definition
+- [7963](https://github.com/kubernetes/ingress-nginx/pull/7963)    Change sanitization message from error to warning
+
+### 1.1.0
+
+**Image:**
+- k8s.gcr.io/ingress-nginx/controller:v1.1.0@sha256:f766669fdcf3dc26347ed273a55e754b427eb4411ee075a53f30718b4499076a
+
+This release makes the annotation `annotation-value-word-blocklist` backwards compatible by being an empty list instead of prescribed defaults.
+Effectively reverting [7874](https://github.com/kubernetes/ingress-nginx/pull/7874) but keeping the functionality of `annotation-value-word-blocklist`
+
+See Issue [7939](https://github.com/kubernetes/ingress-nginx/pull/7939) for more discussion
+
+Admins should still consider putting a reasonable block list in place, more information on why can be found [here](https://github.com/kubernetes/ingress-nginx/issues/7837) and how in our documentation [here](https://kubernetes.github.io/ingress-nginx/user-guide/nginx-configuration/configmap/#annotation-value-word-blocklist)
+
+_Changes:_
+- [7963](https://github.com/kubernetes/ingress-nginx/pull/7963) Change sanitization message from error to warning (#7963)
+- [7942](https://github.com/kubernetes/ingress-nginx/pull/7942) update default block list,docs, tests (#7942)
+- [7948](https://github.com/kubernetes/ingress-nginx/pull/7948) applied allowPrivilegeEscalation=false (#7948)
+- [7941](https://github.com/kubernetes/ingress-nginx/pull/7941) update build for darwin arm64 (#7941)
+
+### 1.0.5
+
+**Image:**
+- k8s.gcr.io/ingress-nginx/controller:v1.0.5@sha256:55a1fcda5b7657c372515fe402c3e39ad93aa59f6e4378e82acd99912fe6028d
+
+_Possible Breaking Change_
+We now implement string sanitization in annotation values. This means that words like "location", "by_lua" and
+others will drop the reconciliation of an Ingress object. 
+
+Users from mod_security and other features should be aware that some blocked values may be used by those features 
+and must be manually unblocked by the Ingress Administrator.
+
+For more details please check [https://kubernetes.github.io/ingress-nginx/user-guide/nginx-configuration/configmap/#annotation-value-word-blocklist]
+
+_Changes:_
+- [7874](https://github.com/kubernetes/ingress-nginx/pull/7874) Add option to sanitize annotation inputs
+- [7854](https://github.com/kubernetes/ingress-nginx/pull/7854) Add brotli-min-length configuration option
+- [7800](https://github.com/kubernetes/ingress-nginx/pull/7800) Fix thread synchronization issue
+- [7711](https://github.com/kubernetes/ingress-nginx/pull/7711) Added AdmissionController metrics
+- [7614](https://github.com/kubernetes/ingress-nginx/pull/7614) Support cors-allow-origin with multiple origins
+- [7472](https://github.com/kubernetes/ingress-nginx/pull/7472) Support watch multiple namespaces matched witch namespace selector
+
+### 1.0.4
+
+**Image:**
+- k8s.gcr.io/ingress-nginx/controller:v1.0.4@sha256:545cff00370f28363dad31e3b59a94ba377854d3a11f18988f5f9e56841ef9ef
+
+_Possible Breaking Change_
+We have disabled the builtin ssl_session_cache due to possible memory fragmentation. This should not impact the majority of users, but please let us know 
+if you face any problem
+
+_Changes:_
+
+- [7777](https://github.com/kubernetes/ingress-nginx/pull/7777) Disable builtin ssl_session_cache
+- [7727](https://github.com/kubernetes/ingress-nginx/pull/7727) Print warning only instead of error if no IngressClass permission is available
+- Bump internal libraries versions
+- Fix diverse documentation
+
+### 1.0.3
+
+**Image:**
+- k8s.gcr.io/ingress-nginx/controller:v1.0.3@sha256:4ade87838eb8256b094fbb5272d7dda9b6c7fa8b759e6af5383c1300996a7452
+
+**Known Issues**
+* Ingress controller now (starting from v1.0.0) mandates cluster scoped access to IngressClass. This leads to problems when updating old Ingress controller to newest version, as described [here](https://github.com/kubernetes/ingress-nginx/issues/7510). We plan to fix it in v1.0.4, see [this](https://github.com/kubernetes/ingress-nginx/pull/7578). 
+
+_New Features:_
+
+_Changes:_
+
+- [X] [#7727](https://github.com/kubernetes/ingress-nginx/pull/7727) Fix selector for shutting down Pods status
+- [X] [#7719](https://github.com/kubernetes/ingress-nginx/pull/7719) Fix overlap check when ingress is configured as canary
+- Diverse docs fixes and libraries bumping
+
 ### 1.0.2
 
 **Image:**
@@ -130,6 +248,34 @@ Changes:
 - [X] [#6944](https://github.com/kubernetes/ingress-nginx/pull/6944) Update proper default value for HTTP2MaxConcurrentStreams in Docs
 - [X] [#6940](https://github.com/kubernetes/ingress-nginx/pull/6940) Fix definition order of modsecurity directives 
 - [X] [#7156] Drops support for Ingress Object v1beta1
+
+### 0.50.0
+
+**Image:**
+
+- `k8s.gcr.io/ingress-nginx/controller:v0.50.0@sha256:f46fc2d161c97a9d950635acb86fb3f8d4adcfb03ee241ea89c6cde16aa3fdf8`
+
+This release makes the annotation `annotation-value-word-blocklist` backwards compatible by being an empty list instead of prescribed defaults.
+Effectively reverting [7874](https://github.com/kubernetes/ingress-nginx/pull/7874) but keeping the functionality of `annotation-value-word-blocklist`
+
+See Issue [7939](https://github.com/kubernetes/ingress-nginx/pull/7939) for more discussion
+
+Admins should still consider putting a reasonable block list in place, more information on why can be found [here](https://github.com/kubernetes/ingress-nginx/issues/7837) and how in our documentation [here](https://kubernetes.github.io/ingress-nginx/user-guide/nginx-configuration/configmap/#annotation-value-word-blocklist)
+
+_Changes:_
+- [7963](https://github.com/kubernetes/ingress-nginx/pull/7963) Change sanitization message from error to warning (#7963)
+- [7942](https://github.com/kubernetes/ingress-nginx/pull/7942) update default block list,docs, tests (#7942)
+
+### 0.49.3
+
+**Image:**
+
+- `k8s.gcr.io/ingress-nginx/controller:v0.49.3@sha256:35fe394c82164efa8f47f3ed0be981b3f23da77175bbb8268a9ae438851c8324`
+
+_Changes:_
+
+- [X] [#7731](https://github.com/kubernetes/ingress-nginx/pull/7727) Fix selector for shutting down Pods status
+- [X] [#7741](https://github.com/kubernetes/ingress-nginx/pull/7719) Fix overlap check when ingress is configured as canary
 
 ### 0.49.2
 

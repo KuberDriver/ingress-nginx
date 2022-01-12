@@ -41,6 +41,7 @@ You can add these Kubernetes annotations to specific Ingress objects to customiz
 |[nginx.ingress.kubernetes.io/canary-by-header-pattern](#canary)|string|
 |[nginx.ingress.kubernetes.io/canary-by-cookie](#canary)|string|
 |[nginx.ingress.kubernetes.io/canary-weight](#canary)|number|
+|[nginx.ingress.kubernetes.io/canary-weight-total](#canary)|number|
 |[nginx.ingress.kubernetes.io/client-body-buffer-size](#client-body-buffer-size)|string|
 |[nginx.ingress.kubernetes.io/configuration-snippet](#configuration-snippet)|string|
 |[nginx.ingress.kubernetes.io/custom-http-errors](#custom-http-errors)|[]int|
@@ -98,6 +99,7 @@ You can add these Kubernetes annotations to specific Ingress objects to customiz
 |[nginx.ingress.kubernetes.io/session-cookie-conditional-samesite-none](#cookie-affinity)|"true" or "false"|
 |[nginx.ingress.kubernetes.io/ssl-redirect](#server-side-https-enforcement-through-redirect)|"true" or "false"|
 |[nginx.ingress.kubernetes.io/ssl-passthrough](#ssl-passthrough)|"true" or "false"|
+|[nginx.ingress.kubernetes.io/stream-snippet](#stream-snippet)|string|
 |[nginx.ingress.kubernetes.io/upstream-hash-by](#custom-nginx-upstream-hashing)|string|
 |[nginx.ingress.kubernetes.io/x-forwarded-prefix](#x-forwarded-prefix-header)|string|
 |[nginx.ingress.kubernetes.io/load-balance](#custom-nginx-load-balancing)|string|
@@ -112,6 +114,7 @@ You can add these Kubernetes annotations to specific Ingress objects to customiz
 |[nginx.ingress.kubernetes.io/connection-proxy-header](#connection-proxy-header)|string|
 |[nginx.ingress.kubernetes.io/enable-access-log](#enable-access-log)|"true" or "false"|
 |[nginx.ingress.kubernetes.io/enable-opentracing](#enable-opentracing)|"true" or "false"|
+|[nginx.ingress.kubernetes.io/opentracing-trust-incoming-span](#opentracing-trust-incoming-span)|"true" or "false"|
 |[nginx.ingress.kubernetes.io/enable-influxdb](#influxdb)|"true" or "false"|
 |[nginx.ingress.kubernetes.io/influxdb-measurement](#influxdb)|string|
 |[nginx.ingress.kubernetes.io/influxdb-port](#influxdb)|string|
@@ -137,7 +140,9 @@ In some cases, you may want to "canary" a new set of changes by sending a small 
 
 * `nginx.ingress.kubernetes.io/canary-by-cookie`: The cookie to use for notifying the Ingress to route the request to the service specified in the Canary Ingress. When the cookie value is set to `always`, it will be routed to the canary. When the cookie is set to `never`, it will never be routed to the canary. For any other value, the cookie will be ignored and the request compared against the other canary rules by precedence.
 
-* `nginx.ingress.kubernetes.io/canary-weight`: The integer based (0 - 100) percent of random requests that should be routed to the service specified in the canary Ingress. A weight of 0 implies that no requests will be sent to the service in the Canary ingress by this canary rule. A weight of 100 means implies all requests will be sent to the alternative service specified in the Ingress.
+* `nginx.ingress.kubernetes.io/canary-weight`: The integer based (0 - <weight-total>) percent of random requests that should be routed to the service specified in the canary Ingress. A weight of 0 implies that no requests will be sent to the service in the Canary ingress by this canary rule. A weight of <weight-total> means implies all requests will be sent to the alternative service specified in the Ingress. `<weight-total>` defaults to 100, and can be increased via `nginx.ingress.kubernetes.io/canary-weight-total`.
+
+* `nginx.ingress.kubernetes.io/canary-weight-total`: The total weight of traffic. If unspecified, it defaults to 100.
 
 Canary rules are evaluated in order of precedence. Precedence is as follows:
 `canary-by-header -> canary-by-cookie -> canary-weight`
@@ -303,6 +308,8 @@ nginx.ingress.kubernetes.io/configuration-snippet: |
   more_set_headers "Request-Id: $req_id";
 ```
 
+Be aware this can be dangerous in multi-tenant clusters, as it can lead to people with otherwise limited permissions being able to retrieve all secrets on the cluster. The recommended mitigation for this threat is to disable this feature, so it may not work for you. See CVE-2021-25742 and the [related issue on github](https://github.com/kubernetes/ingress-nginx/issues/7837) for more information.
+
 ### Custom HTTP Errors
 
 Like the [`custom-http-errors`](./configmap.md#custom-http-errors) value in the ConfigMap, this annotation will set NGINX `proxy-intercept-errors`, but only for the NGINX location associated with this ingress. If a [default backend annotation](#default-backend) is specified on the ingress, the errors will be routed to that annotation's default backend service (instead of the global default backend).
@@ -351,10 +358,13 @@ CORS can be controlled with the following annotations:
 
 * `nginx.ingress.kubernetes.io/cors-allow-origin`: Controls what's the accepted Origin for CORS.
 
-    This is a single field value, with the following format: `http(s)://origin-site.com` or `http(s)://origin-site.com:port`
+    This is a multi-valued field, separated by ','. It must follow this format: `http(s)://origin-site.com` or `http(s)://origin-site.com:port`
 
     - Default: `*`
-    - Example: `nginx.ingress.kubernetes.io/cors-allow-origin: "https://origin-site.com:4443"`
+    - Example: `nginx.ingress.kubernetes.io/cors-allow-origin: "https://origin-site.com:4443, http://origin-site.com, https://example.org:1199"`
+
+    It also supports single level wildcard subdomains and follows this format: `http(s)://*.foo.bar`, `http(s)://*.bar.foo:8080` or `http(s)://*.abc.bar.foo:9000`
+    - Example: `nginx.ingress.kubernetes.io/cors-allow-origin: "https://*.origin-site.com:4443, http://*.origin-site.com, https://example.org:1199"`
 
 * `nginx.ingress.kubernetes.io/cors-allow-credentials`: Controls if credentials can be passed during CORS operations.
 
@@ -525,11 +535,11 @@ for that error to decide if you need to bump the cache size. Without cache the c
 request is two memcached commands: `GET`, and `INCR`. With the cache it is only `INCR`.
 1. Log NGINX variable `$global_rate_limit_exceeding`'s value to have some visibility into
 what portion of requests are rejected (value `y`), whether they are rejected using cached decision (value `c`),
-or if they are not rejeced (default value `n`). You can use [log-format-upstream](./configmap.md#log-format-upstream)
+or if they are not rejected (default value `n`). You can use [log-format-upstream](./configmap.md#log-format-upstream)
 to include that in access logs.
 1. In case of an error it will log the error message and **fail open**.
 1. The annotations below creates Global Rate Limiting instance per ingress.
-That means if there are multuple paths configured under the same ingress,
+That means if there are multiple paths configured under the same ingress,
 the Global Rate Limiting will count requests to all the paths under the same counter.
 Extract a path out into its own ingress if you need to isolate a certain path.
 
@@ -570,7 +580,7 @@ By default the NGINX ingress controller uses a list of all endpoints (Pod IP/por
 
 The `nginx.ingress.kubernetes.io/service-upstream` annotation disables that behavior and instead uses a single upstream in NGINX, the service's Cluster IP and port.
 
-This can be desirable for things like zero-downtime deployments as it reduces the need to reload NGINX configuration when Pods come up and down. See issue [#257](https://github.com/kubernetes/ingress-nginx/issues/257).
+This can be desirable for things like zero-downtime deployments . See issue [#257](https://github.com/kubernetes/ingress-nginx/issues/257).
 
 #### Known Issues
 
@@ -631,7 +641,7 @@ Note: All timeout values are unitless and in seconds e.g. `nginx.ingress.kuberne
 
 ### Proxy redirect
 
-With the annotations `nginx.ingress.kubernetes.io/proxy-redirect-from` and `nginx.ingress.kubernetes.io/proxy-redirect-to` it is possible to
+The annotations `nginx.ingress.kubernetes.io/proxy-redirect-from` and `nginx.ingress.kubernetes.io/proxy-redirect-to` will set the first and second parameters of NGINX's proxy_redirect directive respectively. It is possible to
 set the text that should be changed in the `Location` and `Refresh` header fields of a [proxied server response](http://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_redirect)
 
 Setting "off" or "default" in the annotation `nginx.ingress.kubernetes.io/proxy-redirect-from` disables `nginx.ingress.kubernetes.io/proxy-redirect-to`,
@@ -764,6 +774,15 @@ to enable it or disable it for a specific ingress (e.g. to turn off tracing of e
 
 ```yaml
 nginx.ingress.kubernetes.io/enable-opentracing: "true"
+```
+
+### Opentracing Trust Incoming Span
+
+The option to trust incoming trace spans can be enabled or disabled globally through the ConfigMap but this will
+sometimes need to be overridden to enable it or disable it for a specific ingress (e.g. only enable on a private endpoint)
+
+```yaml
+nginx.ingress.kubernetes.io/opentracing-trust-incoming-span: "true"
 ```
 
 ### X-Forwarded-Prefix Header
@@ -909,3 +928,20 @@ nginx.ingress.kubernetes.io/mirror-request-body: "off"
 The request sent to the mirror is linked to the original request. If you have a slow mirror backend, then the original request will throttle.
 
 For more information on the mirror module see [ngx_http_mirror_module](https://nginx.org/en/docs/http/ngx_http_mirror_module.html)
+
+
+### Stream snippet
+
+Using the annotation `nginx.ingress.kubernetes.io/stream-snippet` it is possible to add custom stream configuration.
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:
+    nginx.ingress.kubernetes.io/stream-snippet: |
+      server {
+        listen 8000;
+        proxy_pass 127.0.0.1:80;
+      }
+```

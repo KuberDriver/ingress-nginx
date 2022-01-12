@@ -10,25 +10,23 @@
 
 - Make changes in /images 
 
-### c. Create PR
+### c. Create Pull Request
 
-- Open a PR to fire cloudbuild of a new image for the Ingress-Nginx-Controller
+- Open a Pull Request for your changes considering the following steps to fire cloudbuild of a new image for the Ingress-Nginx-Controller:
 
-  - In case of rare CVE fix or other reason to rebuild the nginx-base-image itself, look at the /images directory  [NGINX Base Image](https://github.com/kubernetes/ingress-nginx/tree/main/images/nginx)
+  - In case of rare CVE fix or other reason to rebuild the nginx-base-image itself, look at the /images directory  [NGINX Base Image](https://github.com/kubernetes/ingress-nginx/tree/main/images/nginx).
 
-  - Example [NGINX_VERSION](images/nginx/rootfs/build.sh#L21),
-
-  - [SHA256](images/nginx/rootfs/build.sh#L124) 
+  - Example [NGINX_VERSION](images/nginx/rootfs/build.sh#L21), [SHA256](images/nginx/rootfs/build.sh#L124).
 
   - If you are updating any component in [build.sh](images/nginx/rootfs/build.sh) please also update the SHA256 checksum of that component as well, the cloud build will fail with an exit 10 if not.  
 
 ### d. Merge
 
-- Merging success should fire cloudbuild
+- Merging will fire cloudbuild, which will result in images being promoted to the [staging container registry](https://console.cloud.google.com/gcr/images/k8s-staging-ingress-nginx).
 
 ### e. Make sure cloudbuild is a success
 
-- Wait for [cloud build](https://console.cloud.google.com/cloud-build/builds?project=k8s-staging-ingress-nginx)
+- Wait for [cloud build](https://console.cloud.google.com/cloud-build/builds?project=k8s-staging-ingress-nginx). If you don't have access to cloudbuild, you can also have a look at [this](https://prow.k8s.io/?repo=kubernetes%2Fingress-nginx&job=post-*), to see the progress of the build. 
 
 - Proceed only after cloud-build is successful in building a new Ingress-Nginx-Controller image.
 
@@ -70,16 +68,18 @@
 
 ### d. Merge
 
-- Merging success should fire cloudbuild
+- Merging will fire cloudbuild, which will result in images being promoted to the [staging container registry](https://console.cloud.google.com/gcr/images/k8s-staging-ingress-nginx).
 
 ### e. Make sure cloudbuild is a success
 
-- Wait for [cloud build](https://console.cloud.google.com/cloud-build/builds?project=k8s-staging-ingress-nginx)
+- Wait for [cloud build](https://console.cloud.google.com/cloud-build/builds?project=k8s-staging-ingress-nginx). If you don't have access to cloudbuild, you can also have a look at [this](https://prow.k8s.io/?repo=kubernetes%2Fingress-nginx&job=post-*), to see the progress of the build. 
 
 - Proceed only after cloud-build is successful in building a new Ingress-Nginx-Controller image.
 
 
 ## 3. PROMOTE the Image(s):
+
+Promoting the images basically means that images, that were pushed to staging container registry in the steps above, now are also pushed to the public container registry. Thus are publicly available. Follow these steps to promote images: 
 
 ### a. Get the sha
 
@@ -89,9 +89,17 @@
 
   - The sha is also visible here https://console.cloud.google.com/gcr/images/k8s-staging-ingress-nginx/global/controller
 
-### b. Insert the sha(s) in another project
+  - The sha is also visible [here]((https://prow.k8s.io/?repo=kubernetes%2Fingress-nginx&job=post-*)), after cloud build is finished. Click on the respective job, go to `Artifacts` section in the UI, then again `artifacts` in the directory browser. In the `build.log` at the very bottom you see something like this: 
 
-- This sha(s) (and the tag(s) for the new image(s) has to be inserted, as a new line, in a file, in another project of Kubernetes. 
+  ```
+  ...
+  pushing manifest for gcr.io/k8s-staging-ingress-nginx/controller:v1.0.2@sha256:e15fac6e8474d77e1f017edc33d804ce72a184e3c0a30963b2a0d7f0b89f6b16
+  ...
+  ```
+
+### b. Add the new image to [k8s.io](http://github.com/kubernetes/k8s.io)
+
+- The sha(s) from the step before (and the tag(s) for the new image(s) have to be added, as a new line, in a file, of the [k8s.io](http://github.com/kubernetes/k8s.io) project of Kubernetes organization. 
 
 - Fork that other project (if you don't have a fork already).
 
@@ -121,6 +129,8 @@
 
 
 ## 4. PREPARE for a new Release
+
+- Make sure to get the tag and sha of the promoted image from the step before, either from cloudbuild or from [here](https://console.cloud.google.com/gcr/images/k8s-artifacts-prod/us/ingress-nginx/controller). 
 
 - This involves editing of several different files. So carefully follow the steps below and double check all changes with diff/grep etc., repeatedly. Mistakes here impact endusers.
 
@@ -157,13 +167,22 @@
     - annotations
       - artifacthub.io/prerelease: "true" 
       - artifacthub.io/changes: |
-        - Add the titles of the PRs merged after previous release
+        - Add the titles of the PRs merged after previous release here. I used the github-cli to get that list like so `gh pr list -s merged -L 38 -B main | cut -f1,2`
 
-### d. Edit the values.yaml
+### d. Edit the values.yaml and run helm-docs
   - [Fields to edit in values.yaml](https://github.com/kubernetes/ingress-nginx/blob/main/charts/ingress-nginx/values.yaml)
 
     - tag
     - digest
+
+  - [helm-docs](https://github.com/norwoodj/helm-docs) is a tool that generates the README.md for a helm-chart automatically. In the CI pipeline workflow of github actions (/.github/workflows/ci.yaml), you can see how helm-docs is used. But the CI pipeline is not designed to make commits back into the project. So we need to run helm-docs manually, and check in the resulting autogenerated README.md at the path /charts/ingress-nginx/README.md 
+    ```
+          GOBIN=$PWD GO111MODULE=on go install github.com/norwoodj/helm-docs/cmd/helm-docs@v1.6.0
+          ./helm-docs --chart-search-root=${GITHUB_WORKSPACE}/charts
+          git diff --exit-code
+          rm -f ./helm-docs
+    ```
+    Watchout for mistakes like leaving the helm-docs executable in your clone workspace or not not checking the new README.md manually etc.
 
 ### e. Edit the static manifests
 
@@ -197,22 +216,57 @@
       data:
         http-snippet:|
           server{
-          listen 2443;
-          return 308 https://$host$request_uri;
+            listen 2443;
+            return 308 https://$host$request_uri;
           }
       ```
 
 ### f. Edit the changelog
   [Changelog.md](https://github.com/kubernetes/ingress-nginx/blob/main/Changelog.md) 
-    - Add the PRs merged after previous release
-    - One useful command to get this list is
-      ```
-      git log controller-v0.48.1..HEAD --pretty=%s
-      ```
+- Add the PRs merged after previous release
+- If you use the github cli https://cli.github.com/, then that is one useful command to get this list of PRs
+- One way of using gh cli and getting the list of PRs for changelog is described below
+  - Install and configure github cli as per the docs of gh-cli
+  - Change dir to your clone, of your fork, of the ingress-nginx project
+  - Run the below command and save the output to a txt file
+
+    ```
+    gh pr list -s merged -L 38 -B main | cut -f1,2 > ~/tmp/prlist.txt
+    ```
+    - The -L 38 was used for 2 reasons.
+      - Default number of results is 30 and there were more than 30 PRs merged while releasing v1.1.1.
+      -  The other reason to use -L 38 was to ommit the 39th, the 40th and the 41st line in the resulting list. These were non-relevant PRs.
+  - Then use some easy automation in bash/python/whathaveyou to get the PR-List that can be used in the changelog
+  - I save output of above command to a file called prlist.txt. It looks somewhat like this ;
+
+    ```
+    % cat ~/Downloads/prlist.txt 
+    8129    fix syntax in docs for multi-tls example
+    8120    Update go in runner and release v1.1.1
+    8119    Update to go v1.17.6
+    8118    Remove deprecated libraries, update other libs
+    8117    Fix codegen errors
+    8115    chart/ghaction: set the correct permission to have access to push a release 
+    ....
+    ```
+  - Then I use the bash scripty way seen below to convert those PR numbers into links. If I saved the below content in a script called prlist_to_changelog.sh, then I run the command `prlist_to_changelog.sh prlist.txt`
+
+    ```
+    #!/usr/bin/bash
+
+    file="$1"
+
+    while read -r line; do
+      pr_num=`echo "$line" | cut -f1`
+      pr_title=`echo "$line" | cut -f2`
+      echo "[$pr_num](https://github.com/kubernetes/ingress-nginx/pull/$pr_num) $pr_title"
+    done <$file
+
+    ```
 
 ### g. Edit the Documentation:
-    - Update the version in [docs/deploy/index.md](docs/deploy/index.md)
-    - Update Supported versions in the Support Versions table in the README.md 
+- Update the version in [docs/deploy/index.md](docs/deploy/index.md)
+- Update Supported versions in the Support Versions table in the README.md 
 
 ### h. Edit stable.txt
 

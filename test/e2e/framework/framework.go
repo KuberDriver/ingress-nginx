@@ -24,7 +24,6 @@ import (
 
 	"github.com/gavv/httpexpect/v2"
 	"github.com/onsi/ginkgo"
-	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -126,7 +125,7 @@ func (f *Framework) AfterEach() {
 	defer func(kubeClient kubernetes.Interface, ns string) {
 		go func() {
 			defer ginkgo.GinkgoRecover()
-			err := deleteKubeNamespace(kubeClient, ns)
+			err := DeleteKubeNamespace(kubeClient, ns)
 			assert.Nil(ginkgo.GinkgoT(), err, "deleting namespace %v", f.Namespace)
 		}()
 	}(f.KubeClientSet, f.Namespace)
@@ -508,7 +507,7 @@ func UpdateDeployment(kubeClientSet kubernetes.Interface, namespace string, name
 		deployment.Spec.Replicas = NewInt32(int32(replicas))
 		_, err = kubeClientSet.AppsV1().Deployments(namespace).Update(context.TODO(), deployment, metav1.UpdateOptions{})
 		if err != nil {
-			return errors.Wrapf(err, "scaling the number of replicas to %v", replicas)
+			return fmt.Errorf("scaling the number of replicas to %d: %w", replicas, err)
 		}
 
 		err = waitForDeploymentRollout(kubeClientSet, deployment)
@@ -521,7 +520,7 @@ func UpdateDeployment(kubeClientSet kubernetes.Interface, namespace string, name
 		LabelSelector: fields.SelectorFromSet(fields.Set(deployment.Spec.Template.ObjectMeta.Labels)).String(),
 	})
 	if err != nil {
-		return errors.Wrapf(err, "waiting for nginx-ingress-controller replica count to be %v", replicas)
+		return fmt.Errorf("waiting for nginx-ingress-controller replica count to be %d: %w", replicas, err)
 	}
 
 	return nil
@@ -586,6 +585,12 @@ func NewSingleIngressWithTLS(name, path, host string, tlsHosts []string, ns, ser
 // NewSingleIngress creates a simple ingress rule
 func NewSingleIngress(name, path, host, ns, service string, port int, annotations map[string]string) *networking.Ingress {
 	return newSingleIngressWithRules(name, path, host, ns, service, port, annotations, nil)
+}
+
+func NewSingleIngressWithIngressClass(name, path, host, ns, service, ingressClass string, port int, annotations map[string]string) *networking.Ingress {
+	ing := newSingleIngressWithRules(name, path, host, ns, service, port, annotations, nil)
+	ing.Spec.IngressClassName = &ingressClass
+	return ing
 }
 
 // NewSingleIngressWithMultiplePaths creates a simple ingress rule with multiple paths

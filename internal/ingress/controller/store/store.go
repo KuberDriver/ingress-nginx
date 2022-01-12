@@ -23,6 +23,7 @@ import (
 	"os"
 	"reflect"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -31,6 +32,7 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/apimachinery/pkg/labels"
 	k8sruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -126,6 +128,7 @@ type Informer struct {
 	Service      cache.SharedIndexInformer
 	Secret       cache.SharedIndexInformer
 	ConfigMap    cache.SharedIndexInformer
+	Namespace    cache.SharedIndexInformer
 }
 
 // Lister contains object listers (stores).
@@ -136,6 +139,7 @@ type Lister struct {
 	Endpoint              EndpointLister
 	Secret                SecretLister
 	ConfigMap             ConfigMapLister
+	Namespace             NamespaceLister
 	IngressWithAnnotation IngressWithAnnotationsLister
 }
 
@@ -151,7 +155,9 @@ func (e NotExistsError) Error() string {
 func (i *Informer) Run(stopCh chan struct{}) {
 	go i.Secret.Run(stopCh)
 	go i.Endpoint.Run(stopCh)
-	go i.IngressClass.Run(stopCh)
+	if i.IngressClass != nil {
+		go i.IngressClass.Run(stopCh)
+	}
 	go i.Service.Run(stopCh)
 	go i.ConfigMap.Run(stopCh)
 
@@ -159,12 +165,23 @@ func (i *Informer) Run(stopCh chan struct{}) {
 	// from the queue
 	if !cache.WaitForCacheSync(stopCh,
 		i.Endpoint.HasSynced,
-		i.IngressClass.HasSynced,
 		i.Service.HasSynced,
 		i.Secret.HasSynced,
 		i.ConfigMap.HasSynced,
 	) {
 		runtime.HandleError(fmt.Errorf("timed out waiting for caches to sync"))
+	}
+	if i.IngressClass != nil && !cache.WaitForCacheSync(stopCh, i.IngressClass.HasSynced) {
+		runtime.HandleError(fmt.Errorf("timed out waiting for ingress classcaches to sync"))
+	}
+
+	// when limit controller scope to one namespace, skip sync namespaces at cluster scope
+	if i.Namespace != nil {
+		go i.Namespace.Run(stopCh)
+
+		if !cache.WaitForCacheSync(stopCh, i.Namespace.HasSynced) {
+			runtime.HandleError(fmt.Errorf("timed out waiting for caches to sync"))
+		}
 	}
 
 	// in big clusters, deltas can keep arriving even after HasSynced
@@ -220,7 +237,9 @@ type k8sStore struct {
 
 // New creates a new object store to be used in the ingress controller
 func New(
-	namespace, configmap, tcp, udp, defaultSSLCertificate string,
+	namespace string,
+	namespaceSelector labels.Selector,
+	configmap, tcp, udp, defaultSSLCertificate string,
 	resyncPeriod time.Duration,
 	client clientset.Interface,
 	updateCh *channels.RingChannel,
@@ -300,8 +319,10 @@ func New(
 	store.informers.Ingress = infFactory.Networking().V1().Ingresses().Informer()
 	store.listers.Ingress.Store = store.informers.Ingress.GetStore()
 
-	store.informers.IngressClass = infFactory.Networking().V1().IngressClasses().Informer()
-	store.listers.IngressClass.Store = cache.NewStore(cache.MetaNamespaceKeyFunc)
+	if !icConfig.IgnoreIngressClass {
+		store.informers.IngressClass = infFactory.Networking().V1().IngressClasses().Informer()
+		store.listers.IngressClass.Store = cache.NewStore(cache.MetaNamespaceKeyFunc)
+	}
 
 	store.informers.Endpoint = infFactory.Core().V1().Endpoints().Informer()
 	store.listers.Endpoint.Store = store.informers.Endpoint.GetStore()
@@ -314,6 +335,35 @@ func New(
 
 	store.informers.Service = infFactory.Core().V1().Services().Informer()
 	store.listers.Service.Store = store.informers.Service.GetStore()
+
+	// avoid caching namespaces at cluster scope when watching single namespace
+	if namespaceSelector != nil && !namespaceSelector.Empty() {
+		// cache informers factory for namespaces
+		infFactoryNamespaces := informers.NewSharedInformerFactoryWithOptions(client, resyncPeriod,
+			informers.WithTweakListOptions(labelsTweakListOptionsFunc),
+		)
+
+		store.informers.Namespace = infFactoryNamespaces.Core().V1().Namespaces().Informer()
+		store.listers.Namespace.Store = store.informers.Namespace.GetStore()
+	}
+
+	watchedNamespace := func(namespace string) bool {
+		if namespaceSelector == nil || namespaceSelector.Empty() {
+			return true
+		}
+
+		item, ok, err := store.listers.Namespace.GetByKey(namespace)
+		if !ok {
+			klog.Errorf("Namespace %s not existed: %v.", namespace, err)
+			return false
+		}
+		ns, ok := item.(*corev1.Namespace)
+		if !ok {
+			return false
+		}
+
+		return namespaceSelector.Matches(labels.Set(ns.Labels))
+	}
 
 	ingDeleteHandler := func(obj interface{}) {
 		ing, ok := toIngress(obj)
@@ -329,6 +379,10 @@ func New(
 				klog.Errorf("Tombstone contained object that is not an Ingress: %#v", obj)
 				return
 			}
+		}
+
+		if !watchedNamespace(ing.Namespace) {
+			return
 		}
 
 		_, err := store.GetIngressClass(ing, icConfig)
@@ -356,6 +410,11 @@ func New(
 	ingEventHandler := cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			ing, _ := toIngress(obj)
+
+			if !watchedNamespace(ing.Namespace) {
+				return
+			}
+
 			ic, err := store.GetIngressClass(ing, icConfig)
 			if err != nil {
 				klog.InfoS("Ignoring ingress because of error while validating ingress class", "ingress", klog.KObj(ing), "error", err)
@@ -385,8 +444,16 @@ func New(
 			oldIng, _ := toIngress(old)
 			curIng, _ := toIngress(cur)
 
-			_, errOld := store.GetIngressClass(oldIng, icConfig)
-			classCur, errCur := store.GetIngressClass(curIng, icConfig)
+			if !watchedNamespace(oldIng.Namespace) {
+				return
+			}
+
+			var errOld, errCur error
+			var classCur string
+			if !icConfig.IgnoreIngressClass {
+				_, errOld = store.GetIngressClass(oldIng, icConfig)
+				classCur, errCur = store.GetIngressClass(curIng, icConfig)
+			}
 			if errOld != nil && errCur == nil {
 				if hasCatchAllIngressRule(curIng.Spec) && disableCatchAll {
 					klog.InfoS("ignoring update for catch-all ingress because of --disable-catch-all", "ingress", klog.KObj(curIng))
@@ -517,6 +584,10 @@ func New(
 				sec := cur.(*corev1.Secret)
 				key := k8s.MetaNamespaceKey(sec)
 
+				if !watchedNamespace(sec.Namespace) {
+					return
+				}
+
 				if store.defaultSSLCertificate == key {
 					store.syncSecret(store.defaultSSLCertificate)
 				}
@@ -553,6 +624,10 @@ func New(
 				if !ok {
 					return
 				}
+			}
+
+			if !watchedNamespace(sec.Namespace) {
+				return
 			}
 
 			store.sslStore.Delete(k8s.MetaNamespaceKey(sec))
@@ -699,7 +774,9 @@ func New(
 	}
 
 	store.informers.Ingress.AddEventHandler(ingEventHandler)
-	store.informers.IngressClass.AddEventHandler(ingressClassEventHandler)
+	if !icConfig.IgnoreIngressClass {
+		store.informers.IngressClass.AddEventHandler(ingressClassEventHandler)
+	}
 	store.informers.Endpoint.AddEventHandler(epEventHandler)
 	store.informers.Secret.AddEventHandler(secrEventHandler)
 	store.informers.ConfigMap.AddEventHandler(cmEventHandler)
@@ -722,6 +799,21 @@ func hasCatchAllIngressRule(spec networkingv1.IngressSpec) bool {
 	return spec.DefaultBackend != nil
 }
 
+func checkBadAnnotationValue(annotations map[string]string, badwords string) error {
+	arraybadWords := strings.Split(strings.TrimSpace(badwords), ",")
+
+	for annotation, value := range annotations {
+		if strings.HasPrefix(annotation, fmt.Sprintf("%s/", parser.AnnotationsPrefix)) {
+			for _, forbiddenvalue := range arraybadWords {
+				if strings.Contains(value, forbiddenvalue) {
+					return fmt.Errorf("%s annotation contains invalid word %s", annotation, forbiddenvalue)
+				}
+			}
+		}
+	}
+	return nil
+}
+
 // syncIngress parses ingress annotations converting the value of the
 // annotation to a go struct
 func (s *k8sStore) syncIngress(ing *networkingv1.Ingress) {
@@ -730,6 +822,14 @@ func (s *k8sStore) syncIngress(ing *networkingv1.Ingress) {
 
 	copyIng := &networkingv1.Ingress{}
 	ing.ObjectMeta.DeepCopyInto(&copyIng.ObjectMeta)
+
+	if s.backendConfig.AnnotationValueWordBlocklist != "" {
+		if err := checkBadAnnotationValue(copyIng.Annotations, s.backendConfig.AnnotationValueWordBlocklist); err != nil {
+			klog.Warningf("skipping ingress %s: %s", key, err)
+			return
+		}
+	}
+
 	ing.Spec.DeepCopyInto(&copyIng.Spec)
 	ing.Status.DeepCopyInto(&copyIng.Status)
 
@@ -852,7 +952,7 @@ func (s *k8sStore) GetService(key string) (*corev1.Service, error) {
 
 func (s *k8sStore) GetIngressClass(ing *networkingv1.Ingress, icConfig *ingressclass.IngressClassConfiguration) (string, error) {
 	// First we try ingressClassName
-	if ing.Spec.IngressClassName != nil {
+	if !icConfig.IgnoreIngressClass && ing.Spec.IngressClassName != nil {
 		iclass, err := s.listers.IngressClass.ByKey(*ing.Spec.IngressClassName)
 		if err != nil {
 			return "", err

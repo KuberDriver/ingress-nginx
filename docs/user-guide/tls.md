@@ -4,6 +4,9 @@
 
 Anytime we reference a TLS secret, we mean a PEM-encoded X.509, RSA (2048) secret.
 
+!!! warning
+    Ensure that the certificate order is leaf->intermediate->root, otherwise the controller will not be able to import the certificate, and you'll see this error in the logs ```W1012 09:15:45.920000       6 backend_ssl.go:46] Error obtaining X.509 certificate: unexpected error creating SSL Cert: certificate and private key does not have a matching public key: tls: private key does not match public key```
+
 You can generate a self-signed certificate and private key with:
 
 ```bash
@@ -40,6 +43,8 @@ add `--default-ssl-certificate=default/foo-tls` in the `nginx-controller` deploy
 
 The default certificate will also be used for ingress `tls:` sections that do not
 have a `secretName` option.
+
+To force redirects for Ingresses that do not specify a TLS-block at all, take a look at `force-ssl-redirect` in [ConfigMap][ConfigMap].
 
 ## SSL Passthrough
 
@@ -118,7 +123,7 @@ spec:
 
 To provide the most secure baseline configuration possible,
 
-nginx-ingress defaults to using TLS 1.2 and 1.3 only, with a [secure set of TLS ciphers][ssl-ciphers].
+ingress-nginx defaults to using TLS 1.2 and 1.3 only, with a [secure set of TLS ciphers][ssl-ciphers].
 
 ### Legacy TLS
 
@@ -126,7 +131,7 @@ The default configuration, though secure, does not support some older browsers a
 
 For instance, TLS 1.1+ is only enabled by default from Android 5.0 on. At the time of writing,
 May 2018, [approximately 15% of Android devices](https://developer.android.com/about/dashboards/#Platform)
-are not compatible with nginx-ingress's default configuration.
+are not compatible with ingress-nginx's default configuration.
 
 To change this default behavior, use a [ConfigMap][ConfigMap].
 

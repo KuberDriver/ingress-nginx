@@ -42,14 +42,18 @@ metadata:
   name: rewrite
   namespace: default
 spec:
+  ingressClassName: nginx
   rules:
   - host: rewrite.bar.com
     http:
       paths:
-      - backend:
-          serviceName: http-svc
-          servicePort: 80
-        path: /something(/|$)(.*)
+      - path: /something(/|$)(.*)
+        pathType: Prefix
+        backend:
+          service:
+            name: http-svc
+            port: 
+              number: 80
 ' | kubectl create -f -
 ```
 
@@ -74,14 +78,18 @@ metadata:
   name: approot
   namespace: default
 spec:
+  ingressClassName: nginx
   rules:
   - host: approot.bar.com
     http:
       paths:
-      - backend:
-          serviceName: http-svc
-          servicePort: 80
-        path: /
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: http-svc
+            port: 
+              number: 80
 " | kubectl create -f -
 ```
 
@@ -94,6 +102,6 @@ Server: nginx/1.11.10
 Date: Mon, 13 Mar 2017 14:57:15 GMT
 Content-Type: text/html
 Content-Length: 162
-Location: http://stickyingress.example.com/app1
+Location: http://approot.bar.com/app1
 Connection: keep-alive
 ```
