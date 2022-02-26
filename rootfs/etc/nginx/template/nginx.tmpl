@@ -245,8 +245,9 @@ http {
 
     {{ if eq $file "GeoIP2-ISP.mmdb" }}
     geoip2 /etc/nginx/geoip/GeoIP2-ISP.mmdb {
-        $geoip2_isp isp;
-        $geoip2_isp_org organization;
+        $geoip2_isp source=$remote_addr isp;
+        $geoip2_isp_org source=$remote_addr organization;
+        $geoip2_asn source=$remote_addr default=0 autonomous_system_number;
     }
     {{ end }}
 
@@ -259,8 +260,11 @@ http {
     {{ if eq $file "GeoIP2-Anonymous-IP.mmdb" }}
     geoip2 /etc/nginx/geoip/GeoIP2-Anonymous-IP.mmdb {
         $geoip2_is_anon source=$remote_addr is_anonymous;
-        $geoip2_is_hosting_provider source=$remote_addr is_hosting_provider;
-        $geoip2_is_public_proxy source=$remote_addr is_public_proxy;
+        $geoip2_is_anonymous source=$remote_addr default=0 is_anonymous;
+        $geoip2_is_anonymous_vpn source=$remote_addr default=0 is_anonymous_vpn;
+        $geoip2_is_hosting_provider source=$remote_addr default=0 is_hosting_provider;
+        $geoip2_is_public_proxy source=$remote_addr default=0 is_public_proxy;
+        $geoip2_is_tor_exit_node source=$remote_addr default=0 is_tor_exit_node;
     }
     {{ end }}
 
@@ -586,11 +590,17 @@ http {
                 request_uri = string.sub(request_uri, 1, -2)
             end
 
+            {{ if $cfg.UseForwardedHeaders }}
+            local redirectScheme = ngx.var.http_x_forwarded_proto
+            {{ else }}
+            local redirectScheme = ngx.var.scheme
+            {{ end }}
+
             {{ if ne $all.ListenPorts.HTTPS 443 }}
             {{ $redirect_port := (printf ":%v" $all.ListenPorts.HTTPS) }}
-            return string.format("%s://%s%s%s", ngx.var.scheme, "{{ $redirect.To }}", "{{ $redirect_port }}", request_uri)
+            return string.format("%s://%s%s%s", redirectScheme, "{{ $redirect.To }}", "{{ $redirect_port }}", request_uri)
             {{ else }}
-            return string.format("%s://%s%s", ngx.var.scheme, "{{ $redirect.To }}", request_uri)
+            return string.format("%s://%s%s", redirectScheme, "{{ $redirect.To }}", request_uri)
             {{ end }}
         }
 

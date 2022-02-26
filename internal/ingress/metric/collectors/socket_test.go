@@ -68,6 +68,17 @@ func TestNewUDPLogListener(t *testing.T) {
 }
 
 func TestCollector(t *testing.T) {
+
+	buckets := struct {
+		TimeBuckets   []float64
+		LengthBuckets []float64
+		SizeBuckets   []float64
+	}{
+		prometheus.DefBuckets,
+		prometheus.LinearBuckets(10, 10, 10),
+		prometheus.ExponentialBuckets(10, 10, 7),
+	}
+
 	cases := []struct {
 		name            string
 		data            []string
@@ -142,7 +153,35 @@ func TestCollector(t *testing.T) {
 			wantAfter: `
 			`,
 		},
-
+		{
+			name: "valid metric object should update requests metrics",
+			data: []string{`[{
+				"host":"testshop.com",
+				"status":"200",
+				"bytesSent":150.0,
+				"method":"GET",
+				"path":"/admin",
+				"requestLength":300.0,
+				"requestTime":60.0,
+				"upstreamName":"test-upstream",
+				"upstreamIP":"1.1.1.1:8080",
+				"upstreamResponseTime":200,
+				"upstreamStatus":"220",
+				"namespace":"test-app-production",
+				"ingress":"web-yml",
+				"service":"test-app",
+				"canary":""
+			}]`},
+			metrics: []string{"nginx_ingress_controller_requests"},
+			wantBefore: `
+				# HELP nginx_ingress_controller_requests The total number of client requests.
+				# TYPE nginx_ingress_controller_requests counter
+				nginx_ingress_controller_requests{canary="",controller_class="ingress",controller_namespace="default",controller_pod="pod",host="testshop.com",ingress="web-yml",method="GET",namespace="test-app-production",path="/admin",service="test-app",status="200"} 1
+			`,
+			removeIngresses: []string{"test-app-production/web-yml"},
+			wantAfter: `
+			`,
+		},
 		{
 			name: "valid metric object with canary information should update prometheus metrics",
 			data: []string{`[{
@@ -338,7 +377,7 @@ func TestCollector(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			registry := prometheus.NewPedanticRegistry()
 
-			sc, err := NewSocketCollector("pod", "default", "ingress", true)
+			sc, err := NewSocketCollector("pod", "default", "ingress", true, buckets)
 			if err != nil {
 				t.Errorf("%v: unexpected error creating new SocketCollector: %v", c.name, err)
 			}
